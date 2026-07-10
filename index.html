@@ -53,12 +53,16 @@
         <h2>운동</h2>
         <ul id="workout-list" class="entry-list"></ul>
         <div id="workout-chips" class="chips"></div>
-        <form id="workout-form" class="add-row">
-          <label class="sr-only" for="workout-input">운동 입력</label>
-          <input id="workout-input" type="text" placeholder="예) 계단 10층" autocomplete="off" />
-          <label class="sr-only" for="workout-min">운동 시간(분)</label>
-          <input id="workout-min" type="number" inputmode="numeric" min="0" placeholder="분" class="min-input" />
-          <button type="submit" class="add-btn">추가</button>
+        <form id="workout-form" class="add-col">
+          <div class="add-row">
+            <label class="sr-only" for="workout-input">운동 입력</label>
+            <input id="workout-input" type="text" placeholder="예) 계단 10층" autocomplete="off" />
+            <label class="sr-only" for="workout-min">운동 시간(분)</label>
+            <input id="workout-min" type="number" inputmode="numeric" min="0" placeholder="분" class="min-input" />
+            <button type="submit" class="add-btn">추가</button>
+          </div>
+          <label class="sr-only" for="workout-detail">세트·거리·심박 등 상세</label>
+          <input id="workout-detail" type="text" placeholder="세트·거리·심박 등 (예: 3세트×12회, 5km)" autocomplete="off" />
         </form>
       </div>
 
@@ -84,6 +88,27 @@
           <button type="button" data-v="4">4</button>
           <button type="button" data-v="5">5</button>
         </div>
+      </div>
+
+      <!-- 체중 -->
+      <div class="card">
+        <h2>체중</h2>
+        <div class="weight-row">
+          <label class="sr-only" for="weight">체중(kg)</label>
+          <input id="weight" type="number" inputmode="decimal" step="0.1" min="0" placeholder="예) 70.5" />
+          <span class="unit">kg</span>
+        </div>
+        <p class="note">가끔씩만 적어도 변화를 볼 수 있어요.</p>
+      </div>
+
+      <!-- 하루 AI 분석 -->
+      <div class="card">
+        <h2>AI 분석</h2>
+        <p class="note">하루 기록을 복사해서 쓰시는 AI에 붙여넣으면
+          섭취·소모 칼로리 분석과 응원을 받을 수 있어요.</p>
+        <p id="profile-nudge" class="note" hidden>설정에서 키·출생연도를 입력하면 분석이 더 정확해져요.</p>
+        <button id="copy-day" class="add-btn full">오늘 기록 복사</button>
+        <textarea id="day-prompt-fallback" class="prompt-fallback" hidden readonly aria-label="복사할 프롬프트"></textarea>
       </div>
     </section>
 
@@ -124,6 +149,17 @@
       <h1>설정</h1>
 
       <div class="card">
+        <h2>내 정보</h2>
+        <div class="profile-row">
+          <label for="height">키(cm)</label>
+          <input id="height" type="number" inputmode="numeric" min="0" placeholder="예) 172" />
+          <label for="birth-year">출생연도</label>
+          <input id="birth-year" type="number" inputmode="numeric" placeholder="예) 1996" />
+        </div>
+        <p class="note">AI 분석 프롬프트에 담겨 더 정확한 조언을 받는 데 쓰여요. 이 기기에만 저장돼요.</p>
+      </div>
+
+      <div class="card">
         <h2>백업</h2>
         <button id="export-btn" class="add-btn full">내보내기 (백업 파일 저장)</button>
         <button id="import-btn" class="add-btn full">가져오기 (백업 파일에서 복원)</button>
@@ -141,7 +177,7 @@
       <div class="card">
         <h2>소개</h2>
         <p class="note">계정 없이 URL만 열어 바로 쓰는 다이어트 기록. 데이터는 이 기기에만 저장돼요.</p>
-        <p class="note version">버전 1.0</p>
+        <p class="note version">버전 1.1</p>
       </div>
     </section>
   </main>

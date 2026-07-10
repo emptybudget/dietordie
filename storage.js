@@ -7,7 +7,7 @@ const KEY = {
   summaries: 'ddiet:summaries',
 };
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 // ── 저수준 유틸 ───────────────────────────────────────────────
 function read(key, fallback) {
@@ -56,7 +56,7 @@ function migrate() {
     write(KEY.meta, { schemaVersion: SCHEMA_VERSION });
     return;
   }
-  // 예시: if (meta.schemaVersion < 2) { ...; meta.schemaVersion = 2; }
+  // v1 → v2: day.weight, workout.detail, meta.profile 추가 (전부 선택 필드라 변환 불필요)
   if (meta.schemaVersion !== SCHEMA_VERSION) {
     meta.schemaVersion = SCHEMA_VERSION;
     write(KEY.meta, meta);
@@ -82,13 +82,16 @@ function emptyDay() {
     workouts: [],
     sleep: null,
     condition: null,
+    weight: null,
     note: '',
     updatedAt: null,
   };
 }
 
 export function getDay(date) {
-  return read(KEY.day(date), null) || emptyDay();
+  const stored = read(KEY.day(date), null);
+  // 구버전 데이터에 없는 필드(weight 등)는 기본값으로 채운다
+  return stored ? { ...emptyDay(), ...stored } : emptyDay();
 }
 
 // day 전체 저장. updatedAt은 여기서 갱신한다.
@@ -105,6 +108,7 @@ function isEmptyDay(day) {
     day.workouts.length === 0 &&
     day.sleep === null &&
     day.condition === null &&
+    !day.weight &&
     !day.note
   );
 }

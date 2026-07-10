@@ -127,6 +127,13 @@ button {
   gap: 8px;
   margin-top: 8px;
 }
+.add-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+.add-col .add-row { margin-top: 0; }
 .add-row input[type="text"] { flex: 1; }
 .min-input { width: 72px !important; flex: none !important; }
 
@@ -159,6 +166,17 @@ select { min-width: 140px; width: auto; }
 .entry-list li:last-child { border-bottom: none; }
 .entry-text { flex: 1; word-break: break-word; }
 .entry-meta { color: var(--muted); font-size: 0.85rem; white-space: nowrap; }
+.entry-time {
+  width: 96px !important;
+  min-height: var(--tap);
+  padding: 0 6px;
+  border: 1px solid transparent;
+  background: none;
+  color: var(--muted);
+  font-size: 0.85rem;
+  text-align: right;
+}
+.entry-time:focus { border-color: var(--line); background: #fff; }
 .del-btn {
   min-width: var(--tap);
   min-height: var(--tap);
@@ -200,6 +218,22 @@ select { min-width: 140px; width: auto; }
   color: var(--ink);
 }
 .condition button.on { background: var(--brand); color: var(--brand-ink); border-color: var(--brand); }
+
+/* ── 체중 ─────────────────────────────────────── */
+.weight-row { display: flex; align-items: center; gap: 8px; }
+.weight-row input { width: 130px !important; }
+.weight-row .unit { color: var(--muted); }
+.weight-row + .note { margin-top: 8px; }
+
+/* ── 내 정보 ──────────────────────────────────── */
+.profile-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 8px 10px;
+  margin-bottom: 8px;
+}
+.profile-row label { color: var(--muted); font-size: 0.9rem; }
 
 /* ── 요약 탭 ──────────────────────────────────── */
 .guide {

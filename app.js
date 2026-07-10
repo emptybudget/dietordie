@@ -122,7 +122,7 @@ function refreshDayMeta() {
   $('streak').textContent = streak > 0 ? `🔥 ${streak}일 연속 기록` : '';
   const isEmpty =
     day.meals.length === 0 && day.workouts.length === 0 &&
-    !day.sleep && day.condition === null;
+    !day.sleep && day.condition === null && !day.weight;
   $('empty-hint').hidden = !isEmpty;
 }
 
@@ -147,6 +147,13 @@ function renderDay() {
   document.querySelectorAll('#condition button').forEach((b) => {
     b.classList.toggle('on', Number(b.dataset.v) === day.condition);
   });
+
+  // 체중
+  $('weight').value = day.weight ?? '';
+
+  // 내 정보 미입력 안내
+  const p = store.getMeta().profile || {};
+  $('profile-nudge').hidden = Boolean(p.heightCm || p.birthYear);
 }
 
 function renderEntries(kind, items) {
@@ -160,16 +167,27 @@ function renderEntries(kind, items) {
     text.textContent = item.text;
     li.appendChild(text);
 
-    if (kind === 'meal' && item.time) {
-      const meta = document.createElement('span');
-      meta.className = 'entry-meta';
-      meta.textContent = item.time;
-      li.appendChild(meta);
+    if (kind === 'meal') {
+      // 시간을 바로 탭해서 고칠 수 있다
+      const time = document.createElement('input');
+      time.type = 'time';
+      time.className = 'entry-time';
+      time.value = item.time || '';
+      time.setAttribute('aria-label', '식사 시간');
+      time.addEventListener('change', () => {
+        store.updateDay(viewDate, (day) => {
+          const m = day.meals.find((x) => x.id === item.id);
+          if (m) m.time = time.value;
+        });
+        refreshDayMeta();
+      });
+      li.appendChild(time);
     }
-    if (kind === 'workout' && item.minutes) {
+    if (kind === 'workout' && (item.detail || item.minutes)) {
       const meta = document.createElement('span');
       meta.className = 'entry-meta';
-      meta.textContent = `${item.minutes}분`;
+      meta.textContent = [item.detail, item.minutes ? `${item.minutes}분` : null]
+        .filter(Boolean).join(' · ');
       li.appendChild(meta);
     }
 
@@ -204,12 +222,15 @@ function currentTime() {
 }
 
 // ── 항목 추가/삭제 ───────────────────────────────────────────
-function addEntry(field, text, time, minutes) {
+function addEntry(field, text, time, minutes, detail) {
   text = text.trim();
   if (!text) return;
   const entry = { id: store.uid(), text };
   if (field === 'meals') entry.time = time || currentTime();
-  if (field === 'workouts' && minutes) entry.minutes = minutes;
+  if (field === 'workouts') {
+    if (minutes) entry.minutes = minutes;
+    if (detail && detail.trim()) entry.detail = detail.trim();
+  }
   store.updateDay(viewDate, (day) => day[field].push(entry));
   renderDay();
   toast('기록했어요');
@@ -246,9 +267,11 @@ $('workout-form').addEventListener('submit', (e) => {
   e.preventDefault();
   const input = $('workout-input');
   const min = $('workout-min');
-  addEntry('workouts', input.value, null, Number(min.value) || null);
+  const detail = $('workout-detail');
+  addEntry('workouts', input.value, null, Number(min.value) || null, detail.value);
   input.value = '';
   min.value = '';
+  detail.value = '';
 });
 
 // 수면 저장 (입력 변경 시). renderDay를 부르지 않아 편집 중인 시각이 지워지지 않는다.
@@ -264,6 +287,14 @@ function saveSleep() {
 $('sleep-start').addEventListener('change', saveSleep);
 $('sleep-end').addEventListener('change', saveSleep);
 
+// 체중 저장 (입력 변경 시). 편집 중인 값을 덮지 않도록 renderDay는 부르지 않는다.
+$('weight').addEventListener('change', () => {
+  const v = Number($('weight').value) || null;
+  store.updateDay(viewDate, (day) => { day.weight = v; });
+  refreshDayMeta();
+  if (v) toast('기록했어요');
+});
+
 // 컨디션 저장 (토글)
 document.querySelectorAll('#condition button').forEach((b) => {
   b.addEventListener('click', () => {
@@ -273,6 +304,90 @@ document.querySelectorAll('#condition button').forEach((b) => {
     store.updateDay(viewDate, (d) => { d.condition = next; });
     renderDay();
   });
+});
+
+// ── 프롬프트 공통 ────────────────────────────────────────────
+function profileParts() {
+  const p = store.getMeta().profile || {};
+  const parts = [];
+  if (p.heightCm) parts.push(`키 ${p.heightCm}cm`);
+  if (p.birthYear) parts.push(`${p.birthYear}년생`);
+  return parts;
+}
+
+// date 이전(포함) 가장 최근에 기록한 체중
+function latestWeight(uptoDate) {
+  const dates = store.allDates().filter((d) => d <= uptoDate).reverse();
+  for (const d of dates) {
+    const w = store.getDay(d).weight;
+    if (w) return w;
+  }
+  return null;
+}
+
+async function copyText(text, fallbackEl) {
+  try {
+    await navigator.clipboard.writeText(text);
+    fallbackEl.hidden = true;
+    return true;
+  } catch {
+    // 클립보드 실패 시 수동 복사 fallback
+    fallbackEl.value = text;
+    fallbackEl.hidden = false;
+    fallbackEl.focus();
+    fallbackEl.select();
+    return false;
+  }
+}
+
+// ── 하루 AI 분석 프롬프트 (오늘 탭) ──────────────────────────
+function buildDailyPrompt(date) {
+  const day = store.getDay(date);
+  if (day.meals.length === 0 && day.workouts.length === 0) return null;
+
+  const info = profileParts();
+  const w = latestWeight(date);
+  if (w) info.splice(1, 0, `체중 ${w}kg`);
+
+  const lines = ['오늘 제 식단과 운동 기록입니다. 간단히 분석해 주세요.', ''];
+  if (info.length) lines.push('[내 정보]', info.join(', '), '');
+  lines.push(`[${date} 기록]`);
+  if (day.meals.length) {
+    lines.push('식사:');
+    for (const m of day.meals) lines.push(`- ${m.time ? m.time + ' ' : ''}${m.text}`);
+  }
+  if (day.workouts.length) {
+    lines.push('운동:');
+    for (const wo of day.workouts) {
+      const extra = [wo.detail, wo.minutes ? `${wo.minutes}분` : null].filter(Boolean).join(', ');
+      lines.push(`- ${wo.text}${extra ? ` (${extra})` : ''}`);
+    }
+  }
+  const min = sleepMinutes(day.sleep);
+  if (min !== null) lines.push(`수면: ${fmtDuration(min)}`);
+  if (day.condition !== null) lines.push(`컨디션: ${day.condition}/5`);
+  lines.push(
+    '',
+    '[부탁]',
+    '- 먹은 음식의 대략적인 섭취 칼로리를 간단히 추정해 주세요',
+    '- 운동으로 소모한 칼로리도 대략 추정해 주세요',
+    '- 과하거나 부족한 점이 있으면 한두 가지만 짚어 주세요',
+    '- 마지막 줄에 짧은 격려 한마디를 남겨 주세요',
+    '',
+    '[답변 형식]',
+    '- 마크다운 기호 없이 평범한 문장으로 짧게 써 주세요'
+  );
+  return lines.join('\n');
+}
+
+$('copy-day').addEventListener('click', async () => {
+  const prompt = buildDailyPrompt(viewDate);
+  if (!prompt) {
+    toast('먼저 식사나 운동을 기록해 주세요');
+    return;
+  }
+  const ok = await copyText(prompt, $('day-prompt-fallback'));
+  toast(ok ? '복사했어요. 쓰시는 AI에 붙여넣으세요' : '길게 눌러 복사하세요');
 });
 
 // ── 요약 탭 ──────────────────────────────────────────────────
@@ -298,23 +413,30 @@ function buildPrompt() {
     if (day.meals.length)
       parts.push('식사: ' + day.meals.map((m) => (m.time ? `${m.time} ${m.text}` : m.text)).join(', '));
     if (day.workouts.length)
-      parts.push('운동: ' + day.workouts.map((w) => (w.minutes ? `${w.text}(${w.minutes}분)` : w.text)).join(', '));
+      parts.push('운동: ' + day.workouts.map((w) => {
+        const extra = [w.detail, w.minutes ? `${w.minutes}분` : null].filter(Boolean).join(', ');
+        return extra ? `${w.text}(${extra})` : w.text;
+      }).join(', '));
     const min = sleepMinutes(day.sleep);
     if (min !== null) parts.push(`수면: ${fmtDuration(min)}`);
     if (day.condition !== null) parts.push(`컨디션: ${day.condition}/5`);
+    if (day.weight) parts.push(`체중: ${day.weight}kg`);
     if (parts.length) lines.push(`- ${date}\n  ${parts.join('\n  ')}`);
   }
 
   const data = lines.length ? lines.join('\n') : '(기록 없음)';
+  const info = profileParts();
   return [
     '아래는 제 다이어트 기록입니다. 살펴보고 조언해 주세요.',
     '',
+    ...(info.length ? ['[내 정보]', info.join(', '), ''] : []),
     '[기록]',
     data,
     '',
     '[분석해 주세요]',
     '- 식사·운동·수면·컨디션에서 보이는 패턴',
     '- 수면과 컨디션, 식사 사이의 관계',
+    '- 체중 기록이 있다면 변화 흐름도 함께 봐 주세요',
     '- 무리하지 않고 오래 지속할 수 있는 방향의 조언',
     '',
     '[답변 형식]',
@@ -325,20 +447,8 @@ function buildPrompt() {
 }
 
 $('copy-prompt').addEventListener('click', async () => {
-  const text = buildPrompt();
-  try {
-    await navigator.clipboard.writeText(text);
-    toast('프롬프트를 복사했어요');
-    $('prompt-fallback').hidden = true;
-  } catch {
-    // 클립보드 실패 시 수동 복사 fallback
-    const ta = $('prompt-fallback');
-    ta.value = text;
-    ta.hidden = false;
-    ta.focus();
-    ta.select();
-    toast('길게 눌러 복사하세요');
-  }
+  const ok = await copyText(buildPrompt(), $('prompt-fallback'));
+  toast(ok ? '프롬프트를 복사했어요' : '길게 눌러 복사하세요');
 });
 
 $('save-summary').addEventListener('click', () => {
@@ -398,6 +508,23 @@ function renderSummaries() {
   }
 }
 
+// ── 설정 탭: 내 정보 ─────────────────────────────────────────
+function initProfile() {
+  const p = store.getMeta().profile || {};
+  $('height').value = p.heightCm || '';
+  $('birth-year').value = p.birthYear || '';
+}
+function saveProfile() {
+  const profile = {
+    heightCm: Number($('height').value) || null,
+    birthYear: Number($('birth-year').value) || null,
+  };
+  store.setMeta({ profile });
+  $('profile-nudge').hidden = Boolean(profile.heightCm || profile.birthYear);
+}
+$('height').addEventListener('change', saveProfile);
+$('birth-year').addEventListener('change', saveProfile);
+
 // ── 설정 탭: 백업 ────────────────────────────────────────────
 $('export-btn').addEventListener('click', () => {
   const data = store.exportAll();
@@ -425,6 +552,7 @@ $('import-file').addEventListener('change', async (e) => {
     viewDate = store.dateKey();
     renderDay();
     renderSummaries();
+    initProfile();
     toast('백업을 불러왔어요');
   } catch (err) {
     toast(err.message || '불러오지 못했어요');
@@ -455,4 +583,5 @@ if ('serviceWorker' in navigator) {
 
 // ── 초기화 ───────────────────────────────────────────────────
 renderDay();
+initProfile();
 maybeShowIosBanner();
