@@ -1,0 +1,458 @@
+import * as store from './storage.js';
+
+// ── 상태 ──────────────────────────────────────────────────────
+let viewDate = store.dateKey(); // 현재 보고 있는 날짜 (YYYY-MM-DD)
+let toastTimer = null;
+let pendingUndo = null; // { run: () => void }
+
+const $ = (id) => document.getElementById(id);
+
+// ── 탭 전환 ───────────────────────────────────────────────────
+const tabs = { today: $('tab-today'), summary: $('tab-summary'), settings: $('tab-settings') };
+document.querySelectorAll('.tab-btn').forEach((btn) => {
+  btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+});
+function switchTab(name) {
+  for (const [key, el] of Object.entries(tabs)) el.hidden = key !== name;
+  document.querySelectorAll('.tab-btn').forEach((b) => {
+    const on = b.dataset.tab === name;
+    b.classList.toggle('active', on);
+    if (on) b.setAttribute('aria-current', 'page');
+    else b.removeAttribute('aria-current');
+  });
+  if (name === 'summary') renderSummaries();
+  window.scrollTo(0, 0);
+}
+
+// ── 토스트 (저장 피드백 + 실행취소) ───────────────────────────
+function toast(msg, undo) {
+  clearTimeout(toastTimer);
+  pendingUndo = undo || null;
+  $('toast-msg').textContent = msg;
+  const action = $('toast-action');
+  action.hidden = !undo;
+  $('toast').hidden = false;
+  toastTimer = setTimeout(hideToast, 5000);
+}
+function hideToast() {
+  clearTimeout(toastTimer);
+  $('toast').hidden = true;
+  pendingUndo = null;
+}
+$('toast-action').addEventListener('click', () => {
+  if (pendingUndo) pendingUndo.run();
+  hideToast();
+});
+
+// ── 날짜 ──────────────────────────────────────────────────────
+function shiftDate(days) {
+  const [y, m, d] = viewDate.split('-').map(Number);
+  const dt = new Date(y, m - 1, d + days);
+  viewDate = store.dateKey(dt);
+  renderDay();
+}
+$('prev-day').addEventListener('click', () => shiftDate(-1));
+$('next-day').addEventListener('click', () => shiftDate(1));
+
+function dayLabel(date) {
+  const today = store.dateKey();
+  if (date === today) return '오늘';
+  const [y, m, d] = date.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  const wd = ['일', '월', '화', '수', '목', '금', '토'][dt.getDay()];
+  const yst = store.dateKey(new Date(new Date().setDate(new Date().getDate() - 1)));
+  const prefix = date === yst ? '어제 · ' : '';
+  return `${prefix}${m}월 ${d}일 (${wd})`;
+}
+
+// ── 연속 기록일 (스트릭) ──────────────────────────────────────
+function computeStreak() {
+  let cursor = new Date();
+  if (!store.hasDay(store.dateKey(cursor))) {
+    cursor.setDate(cursor.getDate() - 1); // 오늘 미기록이면 어제부터 카운트
+  }
+  let count = 0;
+  while (store.hasDay(store.dateKey(cursor))) {
+    count++;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return count;
+}
+
+// ── 최근 칩 (파생 계산: 최근 7일 빈도순 상위 6개) ─────────────
+function recentChips(field) {
+  const freq = new Map();
+  const [y, m, d] = viewDate.split('-').map(Number);
+  for (let i = 1; i <= 7; i++) {
+    const dt = new Date(y, m - 1, d - i);
+    const day = store.getDay(store.dateKey(dt));
+    for (const item of day[field]) {
+      const t = item.text.trim();
+      if (t) freq.set(t, (freq.get(t) || 0) + 1);
+    }
+  }
+  return [...freq.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([text]) => text);
+}
+
+// ── 수면시간 계산 ─────────────────────────────────────────────
+function sleepMinutes(sleep) {
+  if (!sleep || !sleep.start || !sleep.end) return null;
+  const toMin = (t) => {
+    const [h, mi] = t.split(':').map(Number);
+    return h * 60 + mi;
+  };
+  let s = toMin(sleep.start);
+  let e = toMin(sleep.end);
+  if (e <= s) e += 24 * 60; // start > end → start는 전날 밤
+  return e - s;
+}
+function fmtDuration(min) {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m === 0 ? `${h}시간` : `${h}시간 ${m}분`;
+}
+
+// 스트릭·빈 화면 안내만 갱신 (입력 중인 필드는 건드리지 않는다)
+function refreshDayMeta() {
+  const day = store.getDay(viewDate);
+  const streak = computeStreak();
+  $('streak').textContent = streak > 0 ? `🔥 ${streak}일 연속 기록` : '';
+  const isEmpty =
+    day.meals.length === 0 && day.workouts.length === 0 &&
+    !day.sleep && day.condition === null;
+  $('empty-hint').hidden = !isEmpty;
+}
+
+// ── 오늘 탭 렌더 ─────────────────────────────────────────────
+function renderDay() {
+  const day = store.getDay(viewDate);
+  $('day-label').textContent = dayLabel(viewDate);
+  refreshDayMeta();
+
+  renderEntries('meal', day.meals);
+  renderEntries('workout', day.workouts);
+  renderChips('meal-chips', 'meals', 'meal-input');
+  renderChips('workout-chips', 'workouts', 'workout-input');
+
+  // 수면
+  $('sleep-start').value = day.sleep?.start || '';
+  $('sleep-end').value = day.sleep?.end || '';
+  const min = sleepMinutes(day.sleep);
+  $('sleep-duration').textContent = min !== null ? `잔 시간 ${fmtDuration(min)}` : '';
+
+  // 컨디션
+  document.querySelectorAll('#condition button').forEach((b) => {
+    b.classList.toggle('on', Number(b.dataset.v) === day.condition);
+  });
+}
+
+function renderEntries(kind, items) {
+  const ul = $(`${kind}-list`);
+  ul.innerHTML = '';
+  const field = kind === 'meal' ? 'meals' : 'workouts';
+  for (const item of items) {
+    const li = document.createElement('li');
+    const text = document.createElement('span');
+    text.className = 'entry-text';
+    text.textContent = item.text;
+    li.appendChild(text);
+
+    if (kind === 'meal' && item.time) {
+      const meta = document.createElement('span');
+      meta.className = 'entry-meta';
+      meta.textContent = item.time;
+      li.appendChild(meta);
+    }
+    if (kind === 'workout' && item.minutes) {
+      const meta = document.createElement('span');
+      meta.className = 'entry-meta';
+      meta.textContent = `${item.minutes}분`;
+      li.appendChild(meta);
+    }
+
+    const del = document.createElement('button');
+    del.className = 'del-btn';
+    del.setAttribute('aria-label', '삭제');
+    del.textContent = '×';
+    del.addEventListener('click', () => deleteEntry(field, item.id));
+    li.appendChild(del);
+    ul.appendChild(li);
+  }
+}
+
+function renderChips(containerId, field, inputId) {
+  const box = $(containerId);
+  box.innerHTML = '';
+  for (const text of recentChips(field)) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'chip';
+    chip.textContent = text;
+    chip.addEventListener('click', () => {
+      addEntry(field, text, field === 'meals' ? currentTime() : null, null);
+    });
+    box.appendChild(chip);
+  }
+}
+
+function currentTime() {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+// ── 항목 추가/삭제 ───────────────────────────────────────────
+function addEntry(field, text, time, minutes) {
+  text = text.trim();
+  if (!text) return;
+  const entry = { id: store.uid(), text };
+  if (field === 'meals') entry.time = time || currentTime();
+  if (field === 'workouts' && minutes) entry.minutes = minutes;
+  store.updateDay(viewDate, (day) => day[field].push(entry));
+  renderDay();
+  toast('기록했어요');
+}
+
+function deleteEntry(field, id) {
+  let removed = null;
+  let index = -1;
+  store.updateDay(viewDate, (day) => {
+    index = day[field].findIndex((x) => x.id === id);
+    if (index !== -1) removed = day[field].splice(index, 1)[0];
+  });
+  renderDay();
+  if (!removed) return;
+  toast('삭제했어요', {
+    run: () => {
+      store.updateDay(viewDate, (day) => {
+        const at = Math.min(index, day[field].length);
+        day[field].splice(at, 0, removed);
+      });
+      renderDay();
+    },
+  });
+}
+
+// 폼 제출
+$('meal-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const input = $('meal-input');
+  addEntry('meals', input.value, currentTime(), null);
+  input.value = '';
+});
+$('workout-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const input = $('workout-input');
+  const min = $('workout-min');
+  addEntry('workouts', input.value, null, Number(min.value) || null);
+  input.value = '';
+  min.value = '';
+});
+
+// 수면 저장 (입력 변경 시). renderDay를 부르지 않아 편집 중인 시각이 지워지지 않는다.
+function saveSleep() {
+  const start = $('sleep-start').value;
+  const end = $('sleep-end').value;
+  const sleep = start && end ? { start, end } : null;
+  store.updateDay(viewDate, (day) => { day.sleep = sleep; });
+  const min = sleepMinutes(sleep);
+  $('sleep-duration').textContent = min !== null ? `잔 시간 ${fmtDuration(min)}` : '';
+  refreshDayMeta();
+}
+$('sleep-start').addEventListener('change', saveSleep);
+$('sleep-end').addEventListener('change', saveSleep);
+
+// 컨디션 저장 (토글)
+document.querySelectorAll('#condition button').forEach((b) => {
+  b.addEventListener('click', () => {
+    const v = Number(b.dataset.v);
+    const day = store.getDay(viewDate);
+    const next = day.condition === v ? null : v;
+    store.updateDay(viewDate, (d) => { d.condition = next; });
+    renderDay();
+  });
+});
+
+// ── 요약 탭 ──────────────────────────────────────────────────
+function periodDates() {
+  const n = Number($('period').value);
+  const dates = [];
+  const today = new Date();
+  for (let i = n - 1; i >= 0; i--) {
+    const dt = new Date(today);
+    dt.setDate(today.getDate() - i);
+    dates.push(store.dateKey(dt));
+  }
+  return dates;
+}
+
+function buildPrompt() {
+  const dates = periodDates();
+  const lines = [];
+  for (const date of dates) {
+    if (!store.hasDay(date)) continue;
+    const day = store.getDay(date);
+    const parts = [];
+    if (day.meals.length)
+      parts.push('식사: ' + day.meals.map((m) => (m.time ? `${m.time} ${m.text}` : m.text)).join(', '));
+    if (day.workouts.length)
+      parts.push('운동: ' + day.workouts.map((w) => (w.minutes ? `${w.text}(${w.minutes}분)` : w.text)).join(', '));
+    const min = sleepMinutes(day.sleep);
+    if (min !== null) parts.push(`수면: ${fmtDuration(min)}`);
+    if (day.condition !== null) parts.push(`컨디션: ${day.condition}/5`);
+    if (parts.length) lines.push(`- ${date}\n  ${parts.join('\n  ')}`);
+  }
+
+  const data = lines.length ? lines.join('\n') : '(기록 없음)';
+  return [
+    '아래는 제 다이어트 기록입니다. 살펴보고 조언해 주세요.',
+    '',
+    '[기록]',
+    data,
+    '',
+    '[분석해 주세요]',
+    '- 식사·운동·수면·컨디션에서 보이는 패턴',
+    '- 수면과 컨디션, 식사 사이의 관계',
+    '- 무리하지 않고 오래 지속할 수 있는 방향의 조언',
+    '',
+    '[답변 형식]',
+    '- 마크다운 기호 없이 평범한 문장으로 써 주세요',
+    '- 요약은 5문장 이내',
+    '- 다음 주에 시도해볼 것을 최대 2개까지 제안해 주세요',
+  ].join('\n');
+}
+
+$('copy-prompt').addEventListener('click', async () => {
+  const text = buildPrompt();
+  try {
+    await navigator.clipboard.writeText(text);
+    toast('프롬프트를 복사했어요');
+    $('prompt-fallback').hidden = true;
+  } catch {
+    // 클립보드 실패 시 수동 복사 fallback
+    const ta = $('prompt-fallback');
+    ta.value = text;
+    ta.hidden = false;
+    ta.focus();
+    ta.select();
+    toast('길게 눌러 복사하세요');
+  }
+});
+
+$('save-summary').addEventListener('click', () => {
+  const input = $('summary-input');
+  const text = input.value.trim();
+  if (!text) {
+    toast('저장할 내용이 없어요');
+    return;
+  }
+  const dates = periodDates();
+  store.addSummary({
+    id: store.uid(),
+    from: dates[0],
+    to: dates[dates.length - 1],
+    text,
+    savedAt: store.nowISO(),
+  });
+  input.value = '';
+  renderSummaries();
+  toast('요약을 저장했어요');
+});
+
+function renderSummaries() {
+  const ul = $('summary-list');
+  ul.innerHTML = '';
+  const list = store.getSummaries();
+  if (list.length === 0) {
+    const li = document.createElement('li');
+    li.className = 'note';
+    li.textContent = '아직 저장된 요약이 없어요.';
+    ul.appendChild(li);
+    return;
+  }
+  for (const s of list) {
+    const li = document.createElement('li');
+    const head = document.createElement('div');
+    head.className = 'summary-head';
+    const range = document.createElement('span');
+    range.textContent = `${s.from} ~ ${s.to}`;
+    const del = document.createElement('button');
+    del.className = 'del-btn';
+    del.setAttribute('aria-label', '요약 삭제');
+    del.textContent = '×';
+    del.addEventListener('click', () => {
+      store.removeSummary(s.id);
+      renderSummaries();
+      toast('요약을 삭제했어요');
+    });
+    head.append(range, del);
+
+    const body = document.createElement('div');
+    body.className = 'summary-body';
+    body.textContent = s.text;
+
+    li.append(head, body);
+    ul.appendChild(li);
+  }
+}
+
+// ── 설정 탭: 백업 ────────────────────────────────────────────
+$('export-btn').addEventListener('click', () => {
+  const data = store.exportAll();
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `diet-backup-${store.dateKey()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast('백업 파일을 저장했어요');
+});
+
+$('import-btn').addEventListener('click', () => $('import-file').click());
+$('import-file').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (!confirm('가져오면 지금 이 기기의 기록이 백업 파일 내용으로 전부 바뀝니다. 계속할까요?')) {
+    e.target.value = '';
+    return;
+  }
+  try {
+    const data = JSON.parse(await file.text());
+    store.importAll(data);
+    viewDate = store.dateKey();
+    renderDay();
+    renderSummaries();
+    toast('백업을 불러왔어요');
+  } catch (err) {
+    toast(err.message || '불러오지 못했어요');
+  }
+  e.target.value = '';
+});
+
+// ── iOS 홈 화면 추가 안내 배너 ───────────────────────────────
+function maybeShowIosBanner() {
+  const ua = navigator.userAgent;
+  const isIosSafari = /iP(hone|ad|od)/.test(ua) && /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS/.test(ua);
+  const installed = window.navigator.standalone === true;
+  if (!isIosSafari || installed) return;
+  if (store.getMeta().iosBannerDismissed) return;
+  $('ios-banner').hidden = false;
+}
+$('ios-banner-close').addEventListener('click', () => {
+  store.setMeta({ iosBannerDismissed: true });
+  $('ios-banner').hidden = true;
+});
+
+// ── 서비스 워커 등록 (PWA) ───────────────────────────────────
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
+}
+
+// ── 초기화 ───────────────────────────────────────────────────
+renderDay();
+maybeShowIosBanner();

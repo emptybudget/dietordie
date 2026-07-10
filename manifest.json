@@ -1,0 +1,15 @@
+{
+  "name": "다이어트 기록",
+  "short_name": "다이어트 기록",
+  "description": "계정 없이 URL만 열어 바로 쓰는 다이어트 기록. 데이터는 이 기기에만 저장돼요.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f4f6f5",
+  "theme_color": "#3d7a5a",
+  "lang": "ko",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
