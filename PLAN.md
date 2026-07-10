@@ -57,7 +57,7 @@ localStorage 키:
 
 | 키 | 내용 |
 |---|---|
-| `ddiet:meta` | `{ schemaVersion: 2, iosBannerDismissed?: true, profile?: { heightCm, birthYear, targetKg } }` |
+| `ddiet:meta` | `{ schemaVersion: 2, iosBannerDismissed?: true, helpSeen?: true, profile?: { heightCm, birthYear, targetKg } }` |
 | `ddiet:day:YYYY-MM-DD` | 하루 기록 (아래 day 객체) |
 | `ddiet:summaries` | `[{ id, from, to, text, savedAt }]` — AI 답변 보관. 하루 분석 답변은 from=to로 저장 |
 
@@ -121,6 +121,10 @@ day 객체:
    - 데이터 안내: "기록은 이 기기 브라우저에만 저장됩니다. 브라우저 데이터를 지우거나
      기기를 바꾸면 사라지니, 가끔 내보내기로 백업해 두세요."
    - 앱 한 줄 소개 + 버전
+
+도움말 시트: 첫 방문 1회 자동으로 뜨고(`meta.helpSeen`로 재노출 방지), 우하단 **?** 버튼으로
+언제든 다시 연다. 앱 소개 + 4단계 사용법(적기→복사/공유→AI→저장) + 백업 안내.
+바깥 탭·✕·Esc·시작하기로 닫힘. 강제 튜토리얼이 아닌 공유용 안내 1종 (CLAUDE.md 예외).
 
 iOS 설치 안내: iOS Safari이고 미설치 상태(`navigator.standalone` false)일 때만
 "홈 화면에 추가해서 쓰면 기록이 안전하게 유지돼요 — 공유 버튼 → 홈 화면에 추가" 1줄 배너.

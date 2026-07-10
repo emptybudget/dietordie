@@ -652,6 +652,32 @@ $('ios-banner-close').addEventListener('click', () => {
   $('ios-banner').hidden = true;
 });
 
+// ── 도움말 시트 ──────────────────────────────────────────────
+function openHelp() {
+  $('help').hidden = false;
+  $('help-close').focus();
+}
+function closeHelp() {
+  $('help').hidden = true;
+  $('help-btn').focus();
+}
+$('help-btn').addEventListener('click', openHelp);
+$('help-close').addEventListener('click', closeHelp);
+$('help-ok').addEventListener('click', closeHelp);
+$('help').addEventListener('click', (e) => {
+  if (e.target === $('help')) closeHelp(); // 바깥 영역 탭
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !$('help').hidden) closeHelp();
+});
+
+// 첫 방문에만 공지처럼 한 번 자동으로 띄운다
+function maybeShowHelpFirstTime() {
+  if (store.getMeta().helpSeen) return;
+  store.setMeta({ helpSeen: true });
+  openHelp();
+}
+
 // ── 서비스 워커 등록 (PWA) ───────────────────────────────────
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
@@ -671,4 +697,5 @@ function applyShareLabels() {
 renderDay();
 initProfile();
 applyShareLabels();
+maybeShowHelpFirstTime();
 maybeShowIosBanner();

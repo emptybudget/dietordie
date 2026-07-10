@@ -287,6 +287,51 @@ select { min-width: 140px; width: auto; }
 }
 .tab-btn.active { color: var(--brand); font-weight: 700; }
 
+/* ── 도움말 버튼 + 시트 ───────────────────────── */
+.help-btn {
+  position: fixed;
+  right: 14px;
+  bottom: calc(66px + env(safe-area-inset-bottom));
+  width: var(--tap);
+  height: var(--tap);
+  border-radius: 50%;
+  background: var(--card);
+  border: 1px solid var(--line);
+  color: var(--brand);
+  font-size: 1.25rem;
+  font-weight: 700;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.14);
+  z-index: 6;
+}
+
+.help-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(0,0,0,0.4);
+  z-index: 20;
+}
+.help-sheet {
+  position: relative;
+  background: var(--card);
+  width: 100%;
+  max-width: 560px;
+  border-radius: 16px 16px 0 0;
+  padding: 22px 18px calc(20px + env(safe-area-inset-bottom));
+  max-height: 85vh;
+  overflow-y: auto;
+}
+.help-close { position: absolute; top: 10px; right: 10px; }
+.help-sheet h2 { color: var(--ink); font-size: 1.2rem; margin: 0 0 8px; }
+.help-sheet h3 { color: var(--muted); font-size: 0.95rem; margin: 18px 0 6px; }
+.help-sheet p { margin: 0 0 8px; color: var(--ink); }
+.help-steps { margin: 0; padding-left: 20px; }
+.help-steps li { margin-bottom: 8px; }
+.help-tip { color: var(--muted); font-size: 0.9rem; margin-top: 14px; }
+.help-sheet .add-btn.full { margin-top: 16px; }
+
 /* ── 토스트 ───────────────────────────────────── */
 .toast {
   position: fixed;
