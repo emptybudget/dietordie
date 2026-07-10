@@ -363,27 +363,6 @@ async function copyText(text, fallbackEl) {
   }
 }
 
-// 공유 시트를 지원하면 바로 AI 앱으로 보낼 수 있게 하고(모바일),
-// 아니면 클립보드 복사로 되돌아간다.
-async function shareOrCopy(text, fallbackEl) {
-  if (navigator.share) {
-    try {
-      await navigator.share({ text });
-      return 'shared';
-    } catch (e) {
-      if (e && e.name === 'AbortError') return 'cancelled'; // 사용자가 닫음
-      // 그 외 오류는 복사로 대체
-    }
-  }
-  return (await copyText(text, fallbackEl)) ? 'copied' : 'fallback';
-}
-
-function shareToast(result) {
-  if (result === 'shared') toast('공유했어요');
-  else if (result === 'copied') toast('복사했어요. 쓰시는 AI에 붙여넣으세요');
-  else if (result === 'fallback') toast('길게 눌러 복사하세요');
-}
-
 // ── 하루 AI 분석 프롬프트 (오늘 탭) ──────────────────────────
 function buildDailyPrompt(date) {
   const day = store.getDay(date);
@@ -451,8 +430,8 @@ $('copy-day').addEventListener('click', async () => {
     toast('먼저 식사나 운동을 기록해 주세요');
     return;
   }
-  const r = await shareOrCopy(prompt, $('day-prompt-fallback'));
-  if (r !== 'cancelled') shareToast(r);
+  const ok = await copyText(prompt, $('day-prompt-fallback'));
+  toast(ok ? '복사했어요. 쓰시는 AI에 붙여넣으세요' : '길게 눌러 복사하세요');
 });
 
 // ── 요약 탭 ──────────────────────────────────────────────────
@@ -521,9 +500,8 @@ function buildPrompt() {
 }
 
 $('copy-prompt').addEventListener('click', async () => {
-  const r = await shareOrCopy(buildPrompt(), $('prompt-fallback'));
-  if (r === 'copied') toast('프롬프트를 복사했어요');
-  else if (r !== 'cancelled') shareToast(r);
+  const ok = await copyText(buildPrompt(), $('prompt-fallback'));
+  toast(ok ? '프롬프트를 복사했어요' : '길게 눌러 복사하세요');
 });
 
 $('save-summary').addEventListener('click', () => {
@@ -685,17 +663,8 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-// 공유 시트를 지원하는 기기(대부분 모바일)에서는 문구를 "공유"로 맞춘다
-function applyShareLabels() {
-  if (!navigator.share) return;
-  $('copy-day').textContent = '오늘 기록 공유';
-  $('copy-prompt').textContent = '프롬프트 공유';
-  $('guide-step1').textContent = '① 기간을 고르고 프롬프트를 공유하세요';
-}
-
 // ── 초기화 ───────────────────────────────────────────────────
 renderDay();
 initProfile();
-applyShareLabels();
 maybeShowHelpFirstTime();
 maybeShowIosBanner();
