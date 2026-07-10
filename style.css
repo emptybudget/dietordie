@@ -245,6 +245,7 @@ select { min-width: 140px; width: auto; }
 }
 .guide p { margin: 4px 0; }
 .card > label { display: block; color: var(--muted); font-size: 0.9rem; margin-bottom: 6px; }
+.answer-label { display: block; color: var(--muted); font-size: 0.9rem; margin: 12px 0 6px; }
 .prompt-fallback { margin-top: 8px; height: 160px; }
 
 .summary-list { list-style: none; margin: 0; padding: 0; }

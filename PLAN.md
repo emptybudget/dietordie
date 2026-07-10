@@ -57,9 +57,9 @@ localStorage 키:
 
 | 키 | 내용 |
 |---|---|
-| `ddiet:meta` | `{ schemaVersion: 2, iosBannerDismissed?: true, profile?: { heightCm, birthYear } }` |
+| `ddiet:meta` | `{ schemaVersion: 2, iosBannerDismissed?: true, profile?: { heightCm, birthYear, targetKg } }` |
 | `ddiet:day:YYYY-MM-DD` | 하루 기록 (아래 day 객체) |
-| `ddiet:summaries` | `[{ id, from, to, text, savedAt }]` — AI 요약 보관 |
+| `ddiet:summaries` | `[{ id, from, to, text, savedAt }]` — AI 답변 보관. 하루 분석 답변은 from=to로 저장 |
 
 day 객체:
 
@@ -105,7 +105,9 @@ day 객체:
    - 운동: 분 입력 유지 + 상세 자유 입력 1칸 (세트·거리·심박 등)
    - 각 항목에 × 삭제 → 5초 실행취소 토스트 (토스트 컴포넌트는 1종, 저장 피드백에도 재사용)
    - 수면: 시작/종료 `<input type="time">` · 컨디션: 1~5 버튼 · 체중: kg 입력(선택)
+   - 메모: 맥락 한 줄 입력(선택 — 회식, 몸살 등). 프롬프트에 포함
    - 하단 **AI 분석** 카드: 하루 기록을 칼로리 분석 프롬프트로 복사 (아래 사양 참조)
+     + 받은 답 붙여넣기 → from=to 요약으로 저장 (요약 탭 목록에 함께 모임)
    - 빈 화면 안내(첫 방문): "오늘 먹은 것, 짬짬이 한 운동, 잔 시간을 가볍게 적어보세요.
      기록은 이 기기에만 저장돼요."
 2. **요약**
@@ -114,7 +116,7 @@ day 객체:
    - 기간 선택(기본 최근 7일) → **프롬프트 복사** 버튼
    - AI 답변 붙여넣는 textarea + 저장 · 저장된 요약 목록
 3. **설정**
-   - 내 정보: 키(cm)·출생연도 입력 → AI 프롬프트에 포함 (미입력 시 오늘 탭에 안내 1줄)
+   - 내 정보: 키(cm)·출생연도·목표 체중(kg) 입력 → AI 프롬프트에 포함 (미입력 시 오늘 탭에 안내 1줄)
    - JSON 내보내기/가져오기 (가져오기는 병합이 아닌 확인 후 전체 교체 — 단순하게)
    - 데이터 안내: "기록은 이 기기 브라우저에만 저장됩니다. 브라우저 데이터를 지우거나
      기기를 바꾸면 사라지니, 가끔 내보내기로 백업해 두세요."
@@ -129,6 +131,10 @@ iOS 설치 안내: iOS Safari이고 미설치 상태(`navigator.standalone` fals
 
 프롬프트는 두 종류. 복사는 둘 다 `navigator.clipboard.writeText`,
 실패 시 프롬프트를 textarea로 노출해 수동 복사 fallback.
+
+**공통 — 지난 조언 순환**: 가장 최근 저장된 AI 답변(600자 초과 시 자름)을
+`[지난번 AI 조언]`으로 두 프롬프트 모두에 포함 + "이어지는 관점으로" 지시 추가.
+API 없이 AI가 이전 조언을 기억하는 효과를 낸다. 저장된 답이 없으면 섹션 생략.
 
 **기간 요약 프롬프트 (요약 탭)** — 세 부분:
 

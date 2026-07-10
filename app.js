@@ -122,7 +122,7 @@ function refreshDayMeta() {
   $('streak').textContent = streak > 0 ? `🔥 ${streak}일 연속 기록` : '';
   const isEmpty =
     day.meals.length === 0 && day.workouts.length === 0 &&
-    !day.sleep && day.condition === null && !day.weight;
+    !day.sleep && day.condition === null && !day.weight && !day.note;
   $('empty-hint').hidden = !isEmpty;
 }
 
@@ -148,8 +148,9 @@ function renderDay() {
     b.classList.toggle('on', Number(b.dataset.v) === day.condition);
   });
 
-  // 체중
+  // 체중·메모
   $('weight').value = day.weight ?? '';
+  $('note').value = day.note || '';
 
   // 내 정보 미입력 안내
   const p = store.getMeta().profile || {};
@@ -295,6 +296,14 @@ $('weight').addEventListener('change', () => {
   if (v) toast('기록했어요');
 });
 
+// 메모 저장 (입력 변경 시)
+$('note').addEventListener('change', () => {
+  const v = $('note').value.trim();
+  store.updateDay(viewDate, (day) => { day.note = v; });
+  refreshDayMeta();
+  if (v) toast('기록했어요');
+});
+
 // 컨디션 저장 (토글)
 document.querySelectorAll('#condition button').forEach((b) => {
   b.addEventListener('click', () => {
@@ -307,12 +316,26 @@ document.querySelectorAll('#condition button').forEach((b) => {
 });
 
 // ── 프롬프트 공통 ────────────────────────────────────────────
-function profileParts() {
+// uptoDate를 주면 그 시점 최근 체중도 포함한다
+function profileParts(uptoDate) {
   const p = store.getMeta().profile || {};
   const parts = [];
   if (p.heightCm) parts.push(`키 ${p.heightCm}cm`);
+  if (uptoDate) {
+    const w = latestWeight(uptoDate);
+    if (w) parts.push(`체중 ${w}kg`);
+  }
+  if (p.targetKg) parts.push(`목표 체중 ${p.targetKg}kg`);
   if (p.birthYear) parts.push(`${p.birthYear}년생`);
   return parts;
+}
+
+// 가장 최근에 저장한 AI 답변 — 다음 프롬프트에 넣어 조언이 이어지게 한다
+function lastAdviceText() {
+  const s = store.getSummaries()[0];
+  if (!s) return null;
+  const t = s.text.trim();
+  return t.length > 600 ? t.slice(0, 600) + '…' : t;
 }
 
 // date 이전(포함) 가장 최근에 기록한 체중
@@ -345,9 +368,7 @@ function buildDailyPrompt(date) {
   const day = store.getDay(date);
   if (day.meals.length === 0 && day.workouts.length === 0) return null;
 
-  const info = profileParts();
-  const w = latestWeight(date);
-  if (w) info.splice(1, 0, `체중 ${w}kg`);
+  const info = profileParts(date);
 
   const lines = ['오늘 제 식단과 운동 기록입니다. 간단히 분석해 주세요.', ''];
   if (info.length) lines.push('[내 정보]', info.join(', '), '');
@@ -366,12 +387,16 @@ function buildDailyPrompt(date) {
   const min = sleepMinutes(day.sleep);
   if (min !== null) lines.push(`수면: ${fmtDuration(min)}`);
   if (day.condition !== null) lines.push(`컨디션: ${day.condition}/5`);
+  if (day.note) lines.push(`메모: ${day.note}`);
+  const advice = lastAdviceText();
+  if (advice) lines.push('', '[지난번 AI 조언]', advice);
   lines.push(
     '',
     '[부탁]',
     '- 먹은 음식의 대략적인 섭취 칼로리를 간단히 추정해 주세요',
     '- 운동으로 소모한 칼로리도 대략 추정해 주세요',
     '- 과하거나 부족한 점이 있으면 한두 가지만 짚어 주세요',
+    ...(advice ? ['- 지난번 조언에서 이어지는 관점으로 봐 주세요'] : []),
     '- 마지막 줄에 짧은 격려 한마디를 남겨 주세요',
     '',
     '[답변 형식]',
@@ -379,6 +404,25 @@ function buildDailyPrompt(date) {
   );
   return lines.join('\n');
 }
+
+// 받은 답변을 하루짜리 요약으로 저장 (요약 탭 목록에 함께 모인다)
+$('save-day-answer').addEventListener('click', () => {
+  const input = $('day-answer');
+  const text = input.value.trim();
+  if (!text) {
+    toast('저장할 내용이 없어요');
+    return;
+  }
+  store.addSummary({
+    id: store.uid(),
+    from: viewDate,
+    to: viewDate,
+    text,
+    savedAt: store.nowISO(),
+  });
+  input.value = '';
+  toast('저장했어요. 요약 탭에서 볼 수 있어요');
+});
 
 $('copy-day').addEventListener('click', async () => {
   const prompt = buildDailyPrompt(viewDate);
@@ -421,11 +465,13 @@ function buildPrompt() {
     if (min !== null) parts.push(`수면: ${fmtDuration(min)}`);
     if (day.condition !== null) parts.push(`컨디션: ${day.condition}/5`);
     if (day.weight) parts.push(`체중: ${day.weight}kg`);
+    if (day.note) parts.push(`메모: ${day.note}`);
     if (parts.length) lines.push(`- ${date}\n  ${parts.join('\n  ')}`);
   }
 
   const data = lines.length ? lines.join('\n') : '(기록 없음)';
   const info = profileParts();
+  const advice = lastAdviceText();
   return [
     '아래는 제 다이어트 기록입니다. 살펴보고 조언해 주세요.',
     '',
@@ -433,10 +479,12 @@ function buildPrompt() {
     '[기록]',
     data,
     '',
+    ...(advice ? ['[지난번 AI 조언]', advice, ''] : []),
     '[분석해 주세요]',
     '- 식사·운동·수면·컨디션에서 보이는 패턴',
     '- 수면과 컨디션, 식사 사이의 관계',
     '- 체중 기록이 있다면 변화 흐름도 함께 봐 주세요',
+    ...(advice ? ['- 지난번 조언을 얼마나 따랐는지, 다음에 뭘 조정하면 좋을지'] : []),
     '- 무리하지 않고 오래 지속할 수 있는 방향의 조언',
     '',
     '[답변 형식]',
@@ -487,7 +535,7 @@ function renderSummaries() {
     const head = document.createElement('div');
     head.className = 'summary-head';
     const range = document.createElement('span');
-    range.textContent = `${s.from} ~ ${s.to}`;
+    range.textContent = s.from === s.to ? s.from : `${s.from} ~ ${s.to}`;
     const del = document.createElement('button');
     del.className = 'del-btn';
     del.setAttribute('aria-label', '요약 삭제');
@@ -513,17 +561,20 @@ function initProfile() {
   const p = store.getMeta().profile || {};
   $('height').value = p.heightCm || '';
   $('birth-year').value = p.birthYear || '';
+  $('target-kg').value = p.targetKg || '';
 }
 function saveProfile() {
   const profile = {
     heightCm: Number($('height').value) || null,
     birthYear: Number($('birth-year').value) || null,
+    targetKg: Number($('target-kg').value) || null,
   };
   store.setMeta({ profile });
   $('profile-nudge').hidden = Boolean(profile.heightCm || profile.birthYear);
 }
 $('height').addEventListener('change', saveProfile);
 $('birth-year').addEventListener('change', saveProfile);
+$('target-kg').addEventListener('change', saveProfile);
 
 // ── 설정 탭: 백업 ────────────────────────────────────────────
 $('export-btn').addEventListener('click', () => {

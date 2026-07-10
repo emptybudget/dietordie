@@ -101,6 +101,13 @@
         <p class="note">가끔씩만 적어도 변화를 볼 수 있어요.</p>
       </div>
 
+      <!-- 메모 -->
+      <div class="card">
+        <h2>메모</h2>
+        <label class="sr-only" for="note">하루 메모</label>
+        <input id="note" type="text" placeholder="예) 회식, 몸살 기운" autocomplete="off" />
+      </div>
+
       <!-- 하루 AI 분석 -->
       <div class="card">
         <h2>AI 분석</h2>
@@ -109,6 +116,9 @@
         <p id="profile-nudge" class="note" hidden>설정에서 키·출생연도를 입력하면 분석이 더 정확해져요.</p>
         <button id="copy-day" class="add-btn full">오늘 기록 복사</button>
         <textarea id="day-prompt-fallback" class="prompt-fallback" hidden readonly aria-label="복사할 프롬프트"></textarea>
+        <label class="answer-label" for="day-answer">AI가 준 답변</label>
+        <textarea id="day-answer" rows="3" placeholder="받은 답을 붙여넣고 저장하면 요약 탭에 모여요"></textarea>
+        <button id="save-day-answer" class="add-btn full">답변 저장</button>
       </div>
     </section>
 
@@ -155,6 +165,8 @@
           <input id="height" type="number" inputmode="numeric" min="0" placeholder="예) 172" />
           <label for="birth-year">출생연도</label>
           <input id="birth-year" type="number" inputmode="numeric" placeholder="예) 1996" />
+          <label for="target-kg">목표 체중(kg)</label>
+          <input id="target-kg" type="number" inputmode="decimal" step="0.1" min="0" placeholder="예) 65" />
         </div>
         <p class="note">AI 분석 프롬프트에 담겨 더 정확한 조언을 받는 데 쓰여요. 이 기기에만 저장돼요.</p>
       </div>
@@ -177,7 +189,7 @@
       <div class="card">
         <h2>소개</h2>
         <p class="note">계정 없이 URL만 열어 바로 쓰는 다이어트 기록. 데이터는 이 기기에만 저장돼요.</p>
-        <p class="note version">버전 1.1</p>
+        <p class="note version">버전 1.2</p>
       </div>
     </section>
   </main>
