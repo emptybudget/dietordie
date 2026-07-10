@@ -163,32 +163,30 @@ function renderEntries(kind, items) {
   const field = kind === 'meal' ? 'meals' : 'workouts';
   for (const item of items) {
     const li = document.createElement('li');
+
+    // 텍스트·정보를 탭하면 그 항목을 수정한다
+    const edit = () => startEdit(li, kind, item);
+
     const text = document.createElement('span');
     text.className = 'entry-text';
     text.textContent = item.text;
+    text.setAttribute('role', 'button');
+    text.tabIndex = 0;
+    text.addEventListener('click', edit);
+    text.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); edit(); }
+    });
     li.appendChild(text);
 
-    if (kind === 'meal') {
-      // 시간을 바로 탭해서 고칠 수 있다
-      const time = document.createElement('input');
-      time.type = 'time';
-      time.className = 'entry-time';
-      time.value = item.time || '';
-      time.setAttribute('aria-label', '식사 시간');
-      time.addEventListener('change', () => {
-        store.updateDay(viewDate, (day) => {
-          const m = day.meals.find((x) => x.id === item.id);
-          if (m) m.time = time.value;
-        });
-        refreshDayMeta();
-      });
-      li.appendChild(time);
-    }
-    if (kind === 'workout' && (item.detail || item.minutes)) {
+    let metaText = '';
+    if (kind === 'meal' && item.time) metaText = item.time;
+    if (kind === 'workout' && (item.detail || item.minutes))
+      metaText = [item.detail, item.minutes ? `${item.minutes}분` : null].filter(Boolean).join(' · ');
+    if (metaText) {
       const meta = document.createElement('span');
       meta.className = 'entry-meta';
-      meta.textContent = [item.detail, item.minutes ? `${item.minutes}분` : null]
-        .filter(Boolean).join(' · ');
+      meta.textContent = metaText;
+      meta.addEventListener('click', edit);
       li.appendChild(meta);
     }
 
@@ -255,6 +253,102 @@ function deleteEntry(field, id) {
       renderDay();
     },
   });
+}
+
+// 항목을 그 자리에서 수정 폼으로 바꾼다 (식사: 내용·시간 / 운동: 내용·분·상세)
+function startEdit(li, kind, item) {
+  const field = kind === 'meal' ? 'meals' : 'workouts';
+  li.innerHTML = '';
+  li.classList.add('editing');
+
+  const box = document.createElement('div');
+  box.className = 'edit-box';
+
+  const textInput = document.createElement('input');
+  textInput.type = 'text';
+  textInput.value = item.text;
+  textInput.setAttribute('aria-label', kind === 'meal' ? '식사 내용' : '운동 내용');
+  box.appendChild(textInput);
+
+  let detailInput;
+  if (kind === 'workout') {
+    detailInput = document.createElement('input');
+    detailInput.type = 'text';
+    detailInput.value = item.detail || '';
+    detailInput.placeholder = '세트·거리·심박 등';
+    detailInput.setAttribute('aria-label', '운동 상세');
+    box.appendChild(detailInput);
+  }
+
+  const controls = document.createElement('div');
+  controls.className = 'edit-controls';
+
+  let timeInput, minInput;
+  if (kind === 'meal') {
+    timeInput = document.createElement('input');
+    timeInput.type = 'time';
+    timeInput.className = 'edit-time';
+    timeInput.value = item.time || '';
+    timeInput.setAttribute('aria-label', '식사 시간');
+    controls.appendChild(timeInput);
+  } else {
+    minInput = document.createElement('input');
+    minInput.type = 'number';
+    minInput.inputMode = 'numeric';
+    minInput.min = '0';
+    minInput.className = 'min-input';
+    minInput.placeholder = '분';
+    minInput.value = item.minutes || '';
+    minInput.setAttribute('aria-label', '운동 시간(분)');
+    controls.appendChild(minInput);
+  }
+
+  const saveBtn = document.createElement('button');
+  saveBtn.type = 'button';
+  saveBtn.className = 'add-btn';
+  saveBtn.textContent = '저장';
+  controls.appendChild(saveBtn);
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.className = 'edit-cancel';
+  cancelBtn.textContent = '취소';
+  controls.appendChild(cancelBtn);
+
+  box.appendChild(controls);
+  li.appendChild(box);
+
+  const finish = (save) => {
+    if (save) {
+      const t = textInput.value.trim();
+      if (t) {
+        store.updateDay(viewDate, (day) => {
+          const e = day[field].find((x) => x.id === item.id);
+          if (!e) return;
+          e.text = t;
+          if (kind === 'meal') {
+            if (timeInput.value) e.time = timeInput.value;
+          } else {
+            const mins = Number(minInput.value) || null;
+            if (mins) e.minutes = mins; else delete e.minutes;
+            const d = detailInput.value.trim();
+            if (d) e.detail = d; else delete e.detail;
+          }
+        });
+      }
+    }
+    renderDay();
+  };
+
+  saveBtn.addEventListener('click', () => finish(true));
+  cancelBtn.addEventListener('click', () => finish(false));
+  box.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+    else if (e.key === 'Escape') finish(false);
+  });
+
+  textInput.focus();
+  textInput.select();
 }
 
 // 폼 제출
