@@ -220,6 +220,9 @@ function currentTime() {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
+// 식사를 시간순으로 정렬 (뒤늦게 적거나 시간을 고쳐도 제자리로)
+const byTime = (a, b) => (a.time || '').localeCompare(b.time || '');
+
 // ── 항목 추가/삭제 ───────────────────────────────────────────
 function addEntry(field, text, time, minutes, detail) {
   text = text.trim();
@@ -230,7 +233,10 @@ function addEntry(field, text, time, minutes, detail) {
     if (minutes) entry.minutes = minutes;
     if (detail && detail.trim()) entry.detail = detail.trim();
   }
-  store.updateDay(viewDate, (day) => day[field].push(entry));
+  store.updateDay(viewDate, (day) => {
+    day[field].push(entry);
+    if (field === 'meals') day.meals.sort(byTime);
+  });
   renderDay();
   toast('기록했어요');
 }
@@ -328,6 +334,7 @@ function startEdit(li, kind, item) {
           e.text = t;
           if (kind === 'meal') {
             if (timeInput.value) e.time = timeInput.value;
+            day.meals.sort(byTime);
           } else {
             const mins = Number(minInput.value) || null;
             if (mins) e.minutes = mins; else delete e.minutes;
