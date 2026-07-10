@@ -330,12 +330,29 @@ function profileParts(uptoDate) {
   return parts;
 }
 
-// 가장 최근에 저장한 AI 답변 — 다음 프롬프트에 넣어 조언이 이어지게 한다
+// 앞에서부터 잘라 정보 효율화 (중요한 결론을 앞에 쓰도록 프롬프트에서 유도)
+function briefFront(text, max) {
+  const t = text.trim().replace(/\s+/g, ' ');
+  return t.length > max ? t.slice(0, max).trimEnd() + '…' : t;
+}
+
+// 하루 프롬프트용: 가장 최근에 저장한 AI 답변 1개 (조언이 이어지게 한다)
 function lastAdviceText() {
   const s = store.getSummaries()[0];
-  if (!s) return null;
-  const t = s.text.trim();
-  return t.length > 600 ? t.slice(0, 600) + '…' : t;
+  return s ? briefFront(s.text, 600) : null;
+}
+
+// 요약 프롬프트용: 최근 N회차 조언 흐름 (각 회차 앞부터 짧게, 오래된 것부터)
+function recentAdviceFlow(n = 7) {
+  const list = store.getSummaries().slice(0, n);
+  if (list.length === 0) return null;
+  return list
+    .map((s) => {
+      const label = s.from === s.to ? s.from : `${s.from}~${s.to}`;
+      return `- ${label}: ${briefFront(s.text, 120)}`;
+    })
+    .reverse()
+    .join('\n');
 }
 
 // date 이전(포함) 가장 최근에 기록한 체중
@@ -393,14 +410,16 @@ function buildDailyPrompt(date) {
   lines.push(
     '',
     '[부탁]',
-    '- 먹은 음식의 대략적인 섭취 칼로리를 간단히 추정해 주세요',
-    '- 운동으로 소모한 칼로리도 대략 추정해 주세요',
+    '- 음식 칼로리는 임의로 계산하지 말고, 먼저 검색해 공식·공개된 영양 자료가 있는지 확인해 주세요.',
+    '  자료가 있으면 그 값과 출처를 알려 주고, 없으면 대략적인 추정치임을 분명히 밝혀 주세요',
+    '- 운동 소모 칼로리도 같은 방식으로, 신뢰할 만한 자료를 우선 확인해 알려 주세요',
     '- 과하거나 부족한 점이 있으면 한두 가지만 짚어 주세요',
     ...(advice ? ['- 지난번 조언에서 이어지는 관점으로 봐 주세요'] : []),
     '- 마지막 줄에 짧은 격려 한마디를 남겨 주세요',
     '',
     '[답변 형식]',
-    '- 마크다운 기호 없이 평범한 문장으로 짧게 써 주세요'
+    '- 마크다운 기호 없이 평범한 문장으로 짧게 써 주세요',
+    '- 가장 중요한 결론을 맨 앞 문장에 써 주세요 (앞부분만 저장·재활용돼요)'
   );
   return lines.join('\n');
 }
@@ -476,7 +495,7 @@ function buildPrompt() {
 
   const data = lines.length ? lines.join('\n') : '(기록 없음)';
   const info = profileParts();
-  const advice = lastAdviceText();
+  const flow = recentAdviceFlow();
   return [
     '아래는 제 다이어트 기록입니다. 살펴보고 조언해 주세요.',
     '',
@@ -484,16 +503,17 @@ function buildPrompt() {
     '[기록]',
     data,
     '',
-    ...(advice ? ['[지난번 AI 조언]', advice, ''] : []),
+    ...(flow ? ['[지난 조언 흐름 (최근 7회, 오래된 것부터)]', flow, ''] : []),
     '[분석해 주세요]',
     '- 식사·운동·수면·컨디션에서 보이는 패턴',
     '- 수면과 컨디션, 식사 사이의 관계',
     '- 체중 기록이 있다면 변화 흐름도 함께 봐 주세요',
-    ...(advice ? ['- 지난번 조언을 얼마나 따랐는지, 다음에 뭘 조정하면 좋을지'] : []),
+    ...(flow ? ['- 위 조언 흐름이 얼마나 이어졌는지 보고, 다음 한 걸음을 제안해 주세요'] : []),
     '- 무리하지 않고 오래 지속할 수 있는 방향의 조언',
     '',
     '[답변 형식]',
     '- 마크다운 기호 없이 평범한 문장으로 써 주세요',
+    '- 가장 중요한 결론을 맨 앞 문장에 써 주세요 (앞부분만 저장·재활용돼요)',
     '- 요약은 5문장 이내',
     '- 다음 주에 시도해볼 것을 최대 2개까지 제안해 주세요',
   ].join('\n');
